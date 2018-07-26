@@ -1,0 +1,19 @@
+[ShareMyData]
+default_rotation = daily
+locations = home:etc
+
+[daily]
+name = daily
+retain = 7
+
+[weekly]
+name = weekly
+retain = 8
+
+[home]
+source = /home/
+destination = backup/
+
+[etc]
+source = /etc/
+destination = backup/
