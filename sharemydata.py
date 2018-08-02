@@ -2,8 +2,12 @@
 
 import argparse
 import configparser
+import logging
 import os
 import subprocess
+
+DEFAULT_SECTION = 'ShareMyData'
+verbose = 0
 
 class SSH:
 
@@ -19,7 +23,7 @@ class SSH:
     def run(self, command):
         if isinstance(command, str):
             command = [command]
-        print("Connect to {}:{} and run {}".format(self.connection_str(), self.port, " ".join(command)))
+        logging.debug("Connect to %s:%s and run %s", self.connection_str(), self.port, " ".join(command))
         raw = subprocess.check_output(['ssh', self.connection_str(), '-p', self.port, '-i', self.identity_file] + command)
         return raw.decode('utf-8')
 
@@ -50,12 +54,14 @@ class BackupLocation:
             rel_path = os.path.relpath(os.path.join(self.old_rotation, self.config('destination')), remote_path)
             rsync_args += ['--link-dest=' + rel_path]
         rsync_args += excluded
+        if verbose > 2:
+            rsync_args += ['-v']
         rsync_cmd = ['rsync'] + rsync_args + [self.config('source'), destination]
-        print("Run rsync command {}".format(" ".join(rsync_cmd)))
+        logging.info("Run rsync command %s", " ".join(rsync_cmd))
         try:
             raw = subprocess.check_output(rsync_cmd)
         except subprocess.CalledProcessError as e:
-            print(e)
+            logging.error(e)
 
 class Rotation:
 
@@ -69,13 +75,14 @@ class Rotation:
 
     def get_ssh(self):
         ip_script = self.config('remote_ip_script')
-        print("Retrieve IP with {}".format(ip_script))
+        logging.debug("Retrieve IP with %s", ip_script)
         ip_raw = subprocess.check_output(ip_script, shell=True)
         ip = ip_raw.decode('utf-8').strip()
-        print("Found IP {}".format(ip))
+        logging.info("Found backup device at %s", ip)
         return SSH(self.config('remote_username'), ip, self.config('remote_port'), self.config('identity_file'))
 
     def rotate(self):
+        logging.info("Rotate %s", self.rotation)
         files = self.ssh.run(['ls', self.config('remote_root')]).strip().split("\n")
         name = self.config('name')
         retain = int(self.config('retain'))
@@ -110,29 +117,43 @@ class Rotation:
         last_found = self.rotate()
         locations = self.config('locations').split(':')
         for location in locations:
-            print("Process location {}".format(location))
+            logging.info("Process location %s", location)
             root_path = self.get_rotation_path(0)
             old_rotation = None if last_found is None else self.get_rotation_path(last_found)
             loc = BackupLocation(self.config_dict, self.ssh, root_path, old_rotation, self.rotation, location)
             loc.backup()
 
 
-def get_config(config, key, *sections):
-    for section in sections:
-        if section in config:
-            if key in config[section]:
-                return config[section][key]
-    return config['ShareMyData'][key]
+def require_root(config, rotation):
+    locations = get_config(config, 'locations', rotation).split(':')
+    root = False
+    for location in locations:
+        root = root or get_config(config, 'require_root', rotation, location, default='0') != '0'
+    return root
 
 
-def get_config_list(config, key, *sections):
-    sol = []
-    for section in sections + ('ShareMyData',):
-        if section in config:
-            for sectionkey in config[section]:
-                if sectionkey.startswith(key):
-                    sol.append(config[section][sectionkey])
-    return sol
+def get_config(config, key, *sections, default=None):
+    try:
+        for section in sections:
+            if section in config:
+                if key in config[section]:
+                    return config[section][key]
+        return config[DEFAULT_SECTION][key]
+    except KeyError:
+        return default
+
+
+def get_config_list(config, key, *sections, default=None):
+    try:
+        sol = []
+        for section in sections + (DEFAULT_SECTION,):
+            if section in config:
+                for sectionkey in config[section]:
+                    if sectionkey.startswith(key):
+                        sol.append(config[section][sectionkey])
+        return sol
+    except KeyError:
+        return default
 
 
 def read_config(args):
@@ -141,9 +162,26 @@ def read_config(args):
     return config
 
 
+def setup_logging(args, config):
+    global verbose
+    verbose = args.verbose
+    streamlevel = ([logging.WARNING, logging.INFO][verbose:] + [logging.DEBUG])[0]
+
+    logging.basicConfig(format='%(levelname)s - %(message)s', level=streamlevel)
+    rootlogger = logging.getLogger()
+
+    logfile = get_config(config, 'logfile')
+    filelevel = logging.INFO
+    filehandler = logging.FileHandler(filename=logfile)
+    filehandler.setLevel(filelevel)
+    filehandler.setFormatter(logging.Formatter('[%(asctime)s] %(levelname)s - %(message)s'))
+    rootlogger.addHandler(filehandler)
+
+
 def main():
     parser = argparse.ArgumentParser(description="Backup data to remote server via rsync.")
     parser.add_argument('--config', '-c', default='~/.sharemydata.ini', help="Config file")
+    parser.add_argument('--verbose', '-v', action='count', help='verbose output')
     parser.add_argument('rotation', nargs='?', default='', help='Name of rotation to perform')
     args = parser.parse_args()
 
@@ -151,7 +189,13 @@ def main():
     if not config:
         print("Could not read config file {}".format(args.config))
         return
-    Rotation(config, args.rotation or config['ShareMyData']['default_rotation']).do_everything()
+    setup_logging(args, config)
+    rotation = args.rotation or config['ShareMyData']['default_rotation']
+    if require_root(config, rotation):
+        if os.getuid() != 0:
+            print("This config requires root permissions.")
+            exit(0)
+    Rotation(config, rotation).do_everything()
 
 if __name__ == '__main__':
     main()
