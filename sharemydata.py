@@ -23,7 +23,7 @@ class SSH:
     def run(self, command):
         if isinstance(command, str):
             command = [command]
-        logging.debug("Connect to %s:%s and run %s", self.connection_str(), self.port, " ".join(command))
+        logging.info("Connect to %s:%s and run %s", self.connection_str(), self.port, " ".join(command))
         raw = subprocess.check_output(['ssh', self.connection_str(), '-p', self.port, '-i', self.identity_file] + command)
         return raw.decode('utf-8')
 
@@ -167,14 +167,14 @@ def setup_logging(args, config):
     verbose = args.verbose
     streamlevel = ([logging.WARNING, logging.INFO][verbose:] + [logging.DEBUG])[0]
 
-    logging.basicConfig(format='%(levelname)s - %(message)s', level=streamlevel)
+    logging.basicConfig(format='%(levelname)-10s - %(message)s', level=streamlevel)
     rootlogger = logging.getLogger()
 
     logfile = get_config(config, 'logfile')
     filelevel = logging.INFO
     filehandler = logging.FileHandler(filename=logfile)
     filehandler.setLevel(filelevel)
-    filehandler.setFormatter(logging.Formatter('[%(asctime)s] %(levelname)s - %(message)s'))
+    filehandler.setFormatter(logging.Formatter('[%(asctime)s] %(levelname)-10s - %(message)s'))
     rootlogger.addHandler(filehandler)
 
 
