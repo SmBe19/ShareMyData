@@ -59,7 +59,7 @@ class BackupLocation:
         rsync_cmd = ['rsync'] + rsync_args + [self.config('source'), destination]
         logging.info("Run rsync command %s", " ".join(rsync_cmd))
         try:
-            raw = subprocess.check_output(rsync_cmd)
+            result = subprocess.run(rsync_cmd, check=True)
         except subprocess.CalledProcessError as e:
             logging.error(e)
 
@@ -104,7 +104,8 @@ class Rotation:
                 mvs.append("&&")
             mvs.extend(['mv', self.get_rotation_path(i), self.get_rotation_path(i+1)])
             #self.ssh.run(['mv', self.get_rotation_path(i), self.get_rotation_path(i+1)])
-        self.ssh.run(mvs)
+        if mvs:
+            self.ssh.run(mvs)
         return last_found
 
     def get_rotation_name(self, num):
