@@ -157,9 +157,16 @@ def get_config_list(config, key, *sections, default=None):
         return default
 
 
+def expanduser(path):
+    if path.startswith("~/"):
+        username = os.environ.get('SUDO_USER', '')
+        path = "~" + username + path[1:]
+    return os.path.expanduser(path)
+
+
 def read_config(args):
     config = configparser.ConfigParser()
-    config.read(os.path.expanduser(args.config))
+    config.read(expanduser(args.config))
     return config
 
 
@@ -171,7 +178,7 @@ def setup_logging(args, config):
     logging.basicConfig(format='%(levelname)-10s - %(message)s', level=streamlevel)
     rootlogger = logging.getLogger()
 
-    logfile = os.path.expanduser(get_config(config, 'logfile'))
+    logfile = expanduser(get_config(config, 'logfile'))
     filelevel = logging.INFO
     filehandler = logging.FileHandler(filename=logfile)
     filehandler.setLevel(filelevel)
