@@ -159,7 +159,7 @@ def get_config_list(config, key, *sections, default=None):
 
 def read_config(args):
     config = configparser.ConfigParser()
-    config.read(args.config)
+    config.read(os.path.expanduser(args.config))
     return config
 
 
@@ -171,7 +171,7 @@ def setup_logging(args, config):
     logging.basicConfig(format='%(levelname)-10s - %(message)s', level=streamlevel)
     rootlogger = logging.getLogger()
 
-    logfile = get_config(config, 'logfile')
+    logfile = os.path.expanduser(get_config(config, 'logfile'))
     filelevel = logging.INFO
     filehandler = logging.FileHandler(filename=logfile)
     filehandler.setLevel(filelevel)
