@@ -108,14 +108,31 @@ class Rotation:
             self.ssh.run(mvs)
         return last_found
 
+    def get_last_found(self):
+        logging.info('Resume %s without rotation', self.rotation)
+        files = self.ssh.run(['ls', self.config('remote_root')]).strip().split("\n")
+        retain = int(self.config('retain'))
+
+        def exists(num):
+            return self.get_rotation_name(num) in files
+
+        for i in range(1, retain):
+            if exists(i):
+                return i
+        return None
+
     def get_rotation_name(self, num):
         return '{}.{}'.format(self.config('name'), num)
 
     def get_rotation_path(self, num):
         return os.path.join(self.config('remote_root'), self.get_rotation_name(num))
 
-    def do_everything(self):
-        last_found = self.rotate()
+    def do_everything(self, resume):
+        if resume:
+            logging.info('Resume %s without rotation', self.rotation)
+            last_found = self.get_last_found()
+        else:
+            last_found = self.rotate()
         locations = self.config('locations').split(':')
         for location in locations:
             logging.info("Process location %s", location)
@@ -190,6 +207,7 @@ def main():
     parser = argparse.ArgumentParser(description="Backup data to remote server via rsync.")
     parser.add_argument('--config', '-c', default='~/.sharemydata.ini', help="Config file")
     parser.add_argument('--verbose', '-v', action='count', help='verbose output')
+    parser.add_argument('--resume', '-r', action='store_true', help='resume a previous backup process')
     parser.add_argument('rotation', nargs='?', default='', help='Name of rotation to perform')
     args = parser.parse_args()
 
@@ -203,7 +221,7 @@ def main():
         if os.getuid() != 0:
             print("This config requires root permissions.")
             exit(0)
-    Rotation(config, rotation).do_everything()
+    Rotation(config, rotation).do_everything(args.resume)
 
 if __name__ == '__main__':
     main()
