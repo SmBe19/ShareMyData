@@ -140,6 +140,7 @@ class Rotation:
             old_rotation = None if last_found is None else self.get_rotation_path(last_found)
             loc = BackupLocation(self.config_dict, self.ssh, root_path, old_rotation, self.rotation, location)
             loc.backup()
+        logging.info("Finished backup")
 
 
 def require_root(config, rotation):
