@@ -190,7 +190,8 @@ def read_config(args):
 
 def setup_logging(args, config):
     global verbose
-    verbose = args.verbose
+    if args.verbose is not None:
+        verbose = args.verbose
     streamlevel = ([logging.WARNING, logging.INFO][verbose:] + [logging.DEBUG])[0]
 
     logging.basicConfig(format='%(levelname)-10s - %(message)s', level=streamlevel)
