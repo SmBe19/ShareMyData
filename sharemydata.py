@@ -79,6 +79,8 @@ class BackupLocation:
         if not self.progress.is_finished(directory):
             logging.info('Start directory %s', directory)
             excluded = list(map(lambda x: '--exclude=' + x, self.get_config_list('exclude')))
+            if any(directory.startswith(x) for x in excluded):
+                return
             remote_path = os.path.join(self.root_path, self.config('destination'))
             destination = self.ssh.connection_str() + ':' + remote_path
             ssh_cmd = 'ssh -p {} -i "{}"'.format(self.ssh.port, self.ssh.identity_file)
