@@ -119,7 +119,7 @@ class Rotation:
         self.config_dict = config_dict
         self.rotation = rotation
         self.ssh = self.get_ssh()
-        self.progress = Progress(self.config('progressfile').format(rotation=rotation))
+        self.progress = Progress(expanduser(self.config('progressfile').format(rotation=rotation)))
 
     def config(self, key):
         return get_config(self.config_dict, key, self.rotation)
