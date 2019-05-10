@@ -23,19 +23,51 @@ class SSH:
     def run(self, command):
         if isinstance(command, str):
             command = [command]
-        logging.info("Connect to %s:%s and run %s", self.connection_str(), self.port, " ".join(command))
+        logging.debug("Connect to %s:%s and run %s", self.connection_str(), self.port, " ".join(command))
         raw = subprocess.check_output(['ssh', self.connection_str(), '-p', self.port, '-i', self.identity_file] + command)
         return raw.decode('utf-8')
 
+class Progress:
+
+    def __init__(self, filename):
+        self.filename = filename
+        self.finished = set()
+        if os.path.exists(filename):
+            with open(filename, "r") as f:
+                self.finished = set(x.strip() for x in f.readlines() if x.strip())
+        logging.debug('Already processed locations: %s', ", ".join(self.finished))
+
+    def is_done(self):
+        return self.is_finished(':sharemydata:done:')
+
+    def set_done(self):
+        self.add_finished(':sharemydata:done:')
+
+    def is_finished(self, path):
+        return path in self.finished
+
+    def add_finished(self, path):
+        self.finished.add(path)
+        with open(self.filename, "w") as f:
+            print("\n".join(self.finished), file=f)
+
+    def reset(self):
+        logging.info('Reset progress')
+        self.finished.clear()
+        os.remove(self.filename)
+
+
 class BackupLocation:
 
-    def __init__(self, config_dict, ssh, root_path, old_rotation, rotation, location):
+    def __init__(self, config_dict, ssh, root_path, old_rotation, rotation, location, progress):
         self.config_dict = config_dict
         self.ssh = ssh
         self.root_path = root_path
         self.old_rotation = old_rotation
         self.rotation = rotation
         self.location = location
+        self.progress = progress
+        self.progress_depth = int(self.config('progress_depth'))
 
     def config(self, key):
         return get_config(self.config_dict, key, self.location, self.rotation)
@@ -43,25 +75,43 @@ class BackupLocation:
     def get_config_list(self, key):
         return get_config_list(self.config_dict, key, self.location, self.rotation)
 
+    def handle_directory(self, directory, depth=0):
+        if not self.progress.is_finished(directory):
+            logging.info('Start directory %s', directory)
+            excluded = list(map(lambda x: '--exclude=' + x, self.get_config_list('exclude')))
+            remote_path = os.path.join(self.root_path, self.config('destination'))
+            destination = self.ssh.connection_str() + ':' + remote_path
+            ssh_cmd = 'ssh -p {} -i "{}"'.format(self.ssh.port, self.ssh.identity_file)
+            rsync_args = ['-e', ssh_cmd, '-lptgoD', '--dirs', '--delete', '--numeric-ids', '--relative', '--delete-excluded']
+            if depth >= self.progress_depth:
+                rsync_args += ['--recursive']
+            if self.old_rotation:
+                rel_path = os.path.relpath(os.path.join(self.old_rotation, self.config('destination')), remote_path)
+                rsync_args += ['--link-dest=' + rel_path]
+            rsync_args += excluded
+            if verbose > 2:
+                rsync_args += ['-v']
+            rsync_cmd = ['rsync'] + rsync_args + [directory, destination]
+            logging.debug("Run rsync command %s", " ".join(rsync_cmd))
+            try:
+                result = subprocess.run(rsync_cmd, check=True)
+                self.progress.add_finished(directory)
+                logging.info('Finished directory %s', directory)
+            except subprocess.CalledProcessError as e:
+                logging.error(e)
+                logging.info('Error for directory %s', directory)
+        if depth < self.progress_depth:
+            for f in os.listdir(directory):
+                if os.path.isdir(os.path.join(directory, f)):
+                    self.handle_directory(os.path.join(directory, f) + '/', depth+1)
+
     def backup(self):
-        excluded = list(map(lambda x: '--exclude=' + x, self.get_config_list('exclude')))
         remote_path = os.path.join(self.root_path, self.config('destination'))
-        destination = self.ssh.connection_str() + ':' + remote_path
         self.ssh.run(['mkdir', '-p', remote_path])
-        ssh_cmd = 'ssh -p {} -i "{}"'.format(self.ssh.port, self.ssh.identity_file)
-        rsync_args = ['-e', ssh_cmd, '-a', '--delete', '--numeric-ids', '--relative', '--delete-excluded']
-        if self.old_rotation:
-            rel_path = os.path.relpath(os.path.join(self.old_rotation, self.config('destination')), remote_path)
-            rsync_args += ['--link-dest=' + rel_path]
-        rsync_args += excluded
-        if verbose > 2:
-            rsync_args += ['-v']
-        rsync_cmd = ['rsync'] + rsync_args + [self.config('source'), destination]
-        logging.info("Run rsync command %s", " ".join(rsync_cmd))
-        try:
-            result = subprocess.run(rsync_cmd, check=True)
-        except subprocess.CalledProcessError as e:
-            logging.error(e)
+        source = self.config('source')
+        if not source.endswith('/'):
+            source += '/'
+        self.handle_directory(source)
 
 class Rotation:
 
@@ -69,6 +119,7 @@ class Rotation:
         self.config_dict = config_dict
         self.rotation = rotation
         self.ssh = self.get_ssh()
+        self.progress = Progress(self.config('progressfile').format(rotation=rotation))
 
     def config(self, key):
         return get_config(self.config_dict, key, self.rotation)
@@ -127,19 +178,21 @@ class Rotation:
     def get_rotation_path(self, num):
         return os.path.join(self.config('remote_root'), self.get_rotation_name(num))
 
-    def do_everything(self, resume):
-        if resume:
-            logging.info('Resume %s without rotation', self.rotation)
-            last_found = self.get_last_found()
-        else:
+    def do_everything(self, force_new):
+        if force_new or self.progress.is_done():
+            logging.info('Start new rotation for %s', self.rotation)
             last_found = self.rotate()
+            self.progress.reset()
+        else:
+            last_found = self.get_last_found()
         locations = self.config('locations').split(':')
+        root_path = self.get_rotation_path(0)
+        old_rotation = None if last_found is None else self.get_rotation_path(last_found)
         for location in locations:
             logging.info("Process location %s", location)
-            root_path = self.get_rotation_path(0)
-            old_rotation = None if last_found is None else self.get_rotation_path(last_found)
-            loc = BackupLocation(self.config_dict, self.ssh, root_path, old_rotation, self.rotation, location)
+            loc = BackupLocation(self.config_dict, self.ssh, root_path, old_rotation, self.rotation, location, self.progress)
             loc.backup()
+        self.progress.set_done()
         logging.info("Finished backup")
 
 
@@ -209,7 +262,7 @@ def main():
     parser = argparse.ArgumentParser(description="Backup data to remote server via rsync.")
     parser.add_argument('--config', '-c', default='~/.sharemydata.ini', help="Config file")
     parser.add_argument('--verbose', '-v', action='count', help='verbose output')
-    parser.add_argument('--resume', '-r', action='store_true', help='resume a previous backup process')
+    parser.add_argument('--force-new', '-f', action='store_true', help='force starting a new backup process')
     parser.add_argument('rotation', nargs='?', default='', help='Name of rotation to perform')
     args = parser.parse_args()
 
@@ -223,7 +276,7 @@ def main():
         if os.getuid() != 0:
             print("This config requires root permissions.")
             exit(0)
-    Rotation(config, rotation).do_everything(args.resume)
+    Rotation(config, rotation).do_everything(args.force_new)
 
 if __name__ == '__main__':
     main()

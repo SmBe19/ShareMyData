@@ -3,6 +3,7 @@ default_rotation = daily
 locations = home:etc
 
 logfile = /var/log/sharemydata.log
+progressfile = /tmp/.sharemydata.{rotation}.progress
 
 remote_username = backup
 remote_ip_script = /usr/local/bin/get_ip.sh
@@ -23,8 +24,10 @@ source = /home/
 destination = backup/
 exclude1 = /home/user/.cache
 exclude2 = /home/user/VirtualBox VMs
+progress_depth = 2
 
 [etc]
 source = /etc/
 destination = backup/
 require_root = 1
+progress_depth = 0
