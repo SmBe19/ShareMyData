@@ -254,7 +254,7 @@ def setup_logging(args, config):
     rootlogger = logging.getLogger()
 
     logfile = expanduser(get_config(config, 'logfile'))
-    filelevel = logging.INFO
+    filelevel = logging.DEBUG
     filehandler = logging.FileHandler(filename=logfile)
     filehandler.setLevel(filelevel)
     filehandler.setFormatter(logging.Formatter('[%(asctime)s] %(levelname)-10s - %(message)s'))
