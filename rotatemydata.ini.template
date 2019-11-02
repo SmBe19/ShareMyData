@@ -1,0 +1,16 @@
+[RotateMyData]
+locations = mycomputer
+
+logfile = /var/log/rotatemydata.log
+
+remote_username = admin
+remote_ip_script = /usr/local/bin/get_ip.sh
+remote_port = 2242
+remote_root = /var/backup/
+identity_file = /home/user/.ssh/id_rsa
+
+[backup]
+source = mycomputer
+destination = mycomputer-archive
+retain = 7
+prefix = v

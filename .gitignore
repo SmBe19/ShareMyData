@@ -1,3 +1,6 @@
 tmp/
+test/
 testdata/
+__pycache__/
 sharemydata.ini
+rotatemydata.ini

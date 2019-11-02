@@ -1,33 +1,22 @@
 [ShareMyData]
-default_rotation = daily
 locations = home:etc
 
 logfile = /var/log/sharemydata.log
-progressfile = /tmp/.sharemydata.{rotation}.progress
+progressfile = /tmp/.sharemydata.progress
 
 remote_username = backup
 remote_ip_script = /usr/local/bin/get_ip.sh
 remote_port = 22
-remote_root = /var/backup/
+remote_root = /var/backup/mycomputer
 identity_file = /home/user/.ssh/id_rsa
-
-[daily]
-name = daily
-retain = 7
-
-[weekly]
-name = weekly
-retain = 8
 
 [home]
 source = /home/
-destination = backup/
 exclude1 = /home/user/.cache
 exclude2 = /home/user/VirtualBox VMs
 progress_depth = 2
 
 [etc]
 source = /etc/
-destination = backup/
 require_root = 1
 progress_depth = 0
