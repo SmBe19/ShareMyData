@@ -80,7 +80,7 @@ class BackupLocation:
                 logging.info('Error for directory %s', directory)
         if depth < self.progress_depth:
             for f in os.listdir(directory):
-                if os.path.isdir(os.path.join(directory, f)):
+                if not os.path.islink(os.path.join(directory, f)) and os.path.isdir(os.path.join(directory, f)):
                     self.handle_directory(os.path.join(directory, f) + '/', depth+1)
 
     def backup(self):
