@@ -9,7 +9,7 @@ remote_port = 2242
 remote_root = /var/backup/
 identity_file = /home/user/.ssh/id_rsa
 
-[backup]
+[mycomputer]
 source = mycomputer
 destination = mycomputer-archive
 retain = 7

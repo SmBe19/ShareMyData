@@ -4,3 +4,4 @@ testdata/
 __pycache__/
 sharemydata.ini
 rotatemydata.ini
+get_ip.sh

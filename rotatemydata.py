@@ -60,8 +60,11 @@ class Rotation:
             rel_path = os.path.relpath(old_path, new_path)
             rsync_args += ['--link-dest=' + rel_path]
         rsync_cmd = ['rsync'] + rsync_args + [self.source_root, new_path]
+
+        copy_cmd = ['cp', '-rl', self.source_root, new_path]
+
         try:
-            result = self.ssh.run(rsync_cmd)
+            result = self.ssh.run(copy_cmd)
         except subprocess.CalledProcessError as e:
             logging.error(e)
 
